@@ -31,10 +31,9 @@ var itemStream = function(indexPage, follow, setter, paginate) {
   osm
   .follow(follow)
   .set(setter)
-  .data(function(news) {
-    stream.onNext(news);
-  })
+  .data(function(news) { stream.onNext(news); })
   .error(function(err) { stream.onError(err); })
+  .done(function() { stream.onCompleted(); })
 
   return stream;
 };
@@ -85,7 +84,7 @@ var handleArticle = function(article) {
       "horizontalAlign" : "center",
       "verticalAlign" : "center"
     },
-    "url" : "https://drive.google.com/uc?export=view&id=" + images[Math.floor(Math.random() * images.length)] + "&quot";
+    "url" : "https://drive.google.com/uc?export=view&id=" + images[Math.floor(Math.random() * images.length)] + "&quot"
   }
   return article;
 };
@@ -98,52 +97,56 @@ var handle = function(tag) {
   }
 };
 
+var emisStream = function() {
+  return Rx.Observable.concat(
+    articleStream({
+      indexPage: 'http://www.emi-bg.com/index.php?catid=13' ,
+      follow: '.item_block > .cat_title > p.cat_name > a',
+      titleSelector: '.analysis_header > p'
+    }),
+    articleStream({
+      indexPage: 'http://www.emi-bg.com/index.php?catid=14' ,
+      follow: '.item_block > .cat_title > p.cat_name > a',
+      titleSelector: '.analysis_header > p',
+      paginate: false
+    }),
+    articleStream({
+      indexPage: 'http://www.emi-bg.com/index.php?catid=33',
+      follow: '.item_block > .cat_title > p.cat_name > a',
+      titleSelector: '.analysis_header > p',
+      paginate: false
+    })
+  ).map(handle("emis"));
+};
+
 var newsStream = function() {
-  return Rx.Observable.merge(
-    Rx.Observable.merge(
-      articleStream({
-        indexPage: 'http://www.emi-bg.com/index.php?catid=13' ,
-        follow: '.item_block > .cat_title > p.cat_name > a',
-        titleSelector: '.analysis_header > p'
-      }),
-      articleStream({
-        indexPage: 'http://www.emi-bg.com/index.php?catid=14' ,
-        follow: '.item_block > .cat_title > p.cat_name > a',
-        titleSelector: '.analysis_header > p',
-        paginate: false
-      }),
-      articleStream({
-        indexPage: 'http://www.emi-bg.com/index.php?catid=33',
-        follow: '.item_block > .cat_title > p.cat_name > a',
-        titleSelector: '.analysis_header > p',
-        paginate: false
-      })
-    ).map(handle("emis")),
-    Rx.Observable.merge(
-      articleStream({
-        indexPage: 'http://www.emi-bg.com/index.php?class=3' ,
-        follow: '.item_block > .cat_title > p.cat_name > a',
-        titleSelector: '.news_header > p'
-      }),
-      articleStream({
-        indexPage: 'http://www.emi-bg.com/index.php?class=6',
-        follow: ".initiatives_block > .cat_title > p.cat_name > a",
-        titleSelector: '.initiatives_header > p'
-      })
-    ).map(handle("news")),
-    Rx.Observable.merge(
-      articleStream({
-        indexPage: 'http://www.emi-bg.com/index.php?class=4' ,
-        follow: '.item_block > .cat_title > p.cat_name > a',
-        titleSelector: '.blog_header > p'
-      }),
-      articleStream({
-        indexPage: 'http://www.emi-bg.com/index.php?catid=12',
-        follow: ".item_block > .cat_title > p.cat_name > a",
-        titleSelector: '.analysis_header > p'
-      })
-    ).map(handle("summaries"))
-  );
+  return Rx.Observable.concat(
+    articleStream({
+      indexPage: 'http://www.emi-bg.com/index.php?class=3' ,
+      follow: '.item_block > .cat_title > p.cat_name > a',
+      titleSelector: '.news_header > p'
+    }),
+    articleStream({
+      indexPage: 'http://www.emi-bg.com/index.php?class=6',
+      follow: ".initiatives_block > .cat_title > p.cat_name > a",
+      titleSelector: '.initiatives_header > p'
+    })
+  ).map(handle("news"));
+};
+
+var summariesStream = function() {
+  return Rx.Observable.concat(
+    articleStream({
+      indexPage: 'http://www.emi-bg.com/index.php?class=4' ,
+      follow: '.item_block > .cat_title > p.cat_name > a',
+      titleSelector: '.blog_header > p'
+    }),
+    articleStream({
+      indexPage: 'http://www.emi-bg.com/index.php?catid=12',
+      follow: ".item_block > .cat_title > p.cat_name > a",
+      titleSelector: '.analysis_header > p'
+    })
+  ).map(handle("summaries"));
 }
 
 var insert = function(item) {
@@ -157,6 +160,11 @@ var insert = function(item) {
   });
 };
 
-newsStream()
-.forEach(insert, function(err) {console.log("err:" + err);});
+emisStream().forEach(insert, function(err) {console.log("err:" + err);}, function() {
+  newsStream().forEach(insert, function(err) {console.log("err:" + err);}, function() {
+    summariesStream().forEach(insert, function(err) {console.log("err:" + err);}, function() {
+      console.log("ALL DONE");
+    });
+  });
+});
 
