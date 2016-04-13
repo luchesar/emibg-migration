@@ -3,7 +3,7 @@ var osmosis = require("osmosis");
 var moment = require("moment-timezone");
 var ObjectId = require("bson-objectid");
 var Rx = require("rx");
-var db = require('mongoskin').db('mongodb://localhost:27017/test');
+var db = require('mongoskin').db(process.env.OPENSHIFT_MONGODB_DB_URL + process.env.OPENSHIFT_APP_NAME);
 
 var images = [
   "0B0Nq2Tq_OeCiNjI0anlROFVZVkE",
