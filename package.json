@@ -1,0 +1,22 @@
+{
+  "name": "emi-scrap",
+  "version": "0.1.0",
+  "author": "Luchesar Cekov",
+  "private": true,
+  "engines": {
+    "node": ">=0.12.x"
+  },
+  "scripts": {
+    "pretest": "npm install"
+  },
+  "dependencies": {
+    "bson-objectid": "^1.1.4",
+    "lazy.js": "^0.4.2",
+    "moment-timezone": "^0.5.3",
+    "mongodb": "^2.1.16",
+    "mongoskin": "^2.1.0",
+    "node-uglifier": "^0.4.5",
+    "osmosis": "^0.1.3",
+    "rx": "^4.1.0"
+  }
+}
