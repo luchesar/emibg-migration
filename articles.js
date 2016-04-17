@@ -78,6 +78,7 @@ var handleArticle = function(article) {
   article.migrated = true;
   article.deleted = false;
   article.published = true;
+  article.html.bg = article.html.bg.replace('style="margin-left:30px;margin-top:20px;width:675px;display:table;"', '');
   article.image = {
     "config" : {
       "fill" : true,
