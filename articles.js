@@ -43,7 +43,7 @@ var itemStream = function(indexPage, setter, paginate) {
   .find(setter)
   .set('location')
   .data(function(news) { stream.onNext(news); })
-  .error(function(err) { stream.onError(err); })
+  .error(function(err) { stream.onError(JSON.stringify(err)); })
   .done(function() { stream.onCompleted(); })
 
   return stream;
@@ -57,7 +57,7 @@ var articleStream = function(args) {
       args.selector,
       paginate
     ),
-    Rx.Observable.interval(600),
+    Rx.Observable.interval(700),
     function(item, interval) {return item;}
   )
   .map(function(link) {
@@ -81,7 +81,7 @@ var articleStream = function(args) {
       result.onCompleted();
     });
     return result;
-  }, function(err){}, function(){console.log("ON COMPLETE");});
+  }, function(err){return Rx.Observable.empty();}, function(){return Rx.Observable.empty();});
 };
 
 var id = function(millis) {
@@ -178,7 +178,7 @@ var summariesStream = function() {
     articleStream({
       indexPage: 'http://www.emi-bg.com/index.php?catid=12',
       selector: ".item_block > .cat_title > p.cat_name > a@href",
-      titleSelector: '.analysis_header > a'
+      titleSelector: '.analysis_header > p'
     })
   ).map(handle("summaries"));
 }
@@ -202,11 +202,11 @@ Rx.Observable.concat(
   indexPage: 'http://www.emi-bg.com/index.php?catid=13' ,
   selector: '.item_block > .cat_title > p.cat_name > a@href',
 }).forEach(function(link) {console.log(link);})*/
-/*emisStream().forEach(insert, function(err) {console.log("err:" + err);}, function() {
+emisStream().forEach(insert, function(err) {console.log("err:" + err);}, function() {
   newsStream().forEach(insert, function(err) {console.log("err:" + err);}, function() {
     summariesStream().forEach(insert, function(err) {console.log("err:" + err);}, function() {
       console.log("ALL DONE");
     });
   });
-});*/
+});
 

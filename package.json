@@ -10,6 +10,7 @@
     "pretest": "npm install"
   },
   "dependencies": {
+    "bluebird": "^3.3.5",
     "bson-objectid": "^1.1.4",
     "cheerio": "^0.20.0",
     "lazy.js": "^0.4.2",
