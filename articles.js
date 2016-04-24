@@ -4,6 +4,18 @@ var moment = require("moment-timezone");
 var ObjectId = require("bson-objectid");
 var Rx = require("rx");
 var db = require('mongoskin').db(process.env.OPENSHIFT_MONGODB_DB_URL + process.env.OPENSHIFT_APP_NAME);
+var request = require('request');
+var cheerio = require('cheerio');
+
+/*console.log("fetching an article");
+request("http://www.emi-bg.com/index.php?id=1827", function(error, response, body) {
+  if (!error && response.statusCode == 200) {
+    var $ = cheerio.load(body, {decodeEntities: false});
+    console.log($(".div_pod + div").html())
+
+    //console.log("response body:" + body)
+  }
+});*/
 
 var images = [
   "0B0Nq2Tq_OeCiNjI0anlROFVZVkE",
@@ -21,16 +33,15 @@ var images = [
   "0B0Nq2Tq_OeCiZkpwNWxfWlY1Mm8"
 ];
 
-var itemStream = function(indexPage, follow, setter, paginate) {
+var itemStream = function(indexPage, setter, paginate) {
   var stream = new Rx.Subject();
-  var osm = osmosis.get(indexPage)
+  var osm = osmosis.get(indexPage);
   if (paginate) {
-    console.log("PAGINATE");
     osm = osm.paginate('.cat_stranicirane > span:not(.tochki_div):first + a', '.cat_stranicirane > a:last');
   }
   osm
-  .follow(follow)
-  .set(setter)
+  .find(setter)
+  .set('location')
   .data(function(news) { stream.onNext(news); })
   .error(function(err) { stream.onError(err); })
   .done(function() { stream.onCompleted(); })
@@ -40,16 +51,37 @@ var itemStream = function(indexPage, follow, setter, paginate) {
 
 var articleStream = function(args) {
   var paginate = args.paginate === false ? false : true;
-  return itemStream(
-    args.indexPage,
-    args.follow,
-    {
-      "title": { "bg": args.titleSelector},
-      "details": ".div_pod > .cat_autor",
-      "html": {"bg": ".div_pod + div:html"}
-    },
-    paginate
-  );
+  return Rx.Observable.zip(
+    itemStream(
+      args.indexPage,
+      args.selector,
+      paginate
+    ),
+    Rx.Observable.interval(600),
+    function(item, interval) {return item;}
+  )
+  .map(function(link) {
+    return 'http://www.emi-bg.com/index.php' + link.location;
+  }, function(){})
+  .flatMapObserver(function(url) {
+    var result = new Rx.Subject();
+    request(url, function(error, response, body) {
+      if (error) result.onError(error);
+      else if (response.statusCode == 200) {
+        var $ = cheerio.load(body, {decodeEntities: true});
+        var r = {
+          "title": { "bg": $(args.titleSelector).text()},
+          "details": $(".div_pod > .cat_autor").text(),
+          "html": {"bg": $(".div_pod + div").html()}
+        };
+        result.onNext(r);
+      } else {
+        result.onError("Fetching url:" + url + " rturned status:" + response.statusCode);
+      }
+      result.onCompleted();
+    });
+    return result;
+  }, function(err){}, function(){console.log("ON COMPLETE");});
 };
 
 var id = function(millis) {
@@ -60,6 +92,7 @@ var id = function(millis) {
 
 var handleArticle = function(article) {
   var details = article.details;
+  //console.log("article:" + JSON.stringify(article));
   delete article.details;
 
   _(details).split(",").each(function(element) {
@@ -102,18 +135,18 @@ var emisStream = function() {
   return Rx.Observable.concat(
     articleStream({
       indexPage: 'http://www.emi-bg.com/index.php?catid=13' ,
-      follow: '.item_block > .cat_title > p.cat_name > a',
+      selector: '.item_block > .cat_title > p.cat_name > a@href',
       titleSelector: '.analysis_header > p'
     }),
     articleStream({
       indexPage: 'http://www.emi-bg.com/index.php?catid=14' ,
-      follow: '.item_block > .cat_title > p.cat_name > a',
+      selector: '.item_block > .cat_title > p.cat_name > a@href',
       titleSelector: '.analysis_header > p',
       paginate: false
     }),
     articleStream({
       indexPage: 'http://www.emi-bg.com/index.php?catid=33',
-      follow: '.item_block > .cat_title > p.cat_name > a',
+      selector: '.item_block > .cat_title > p.cat_name > a@href',
       titleSelector: '.analysis_header > p',
       paginate: false
     })
@@ -124,12 +157,12 @@ var newsStream = function() {
   return Rx.Observable.concat(
     articleStream({
       indexPage: 'http://www.emi-bg.com/index.php?class=3' ,
-      follow: '.item_block > .cat_title > p.cat_name > a',
+      selector: '.item_block > .cat_title > p.cat_name > a@href',
       titleSelector: '.news_header > p'
     }),
     articleStream({
       indexPage: 'http://www.emi-bg.com/index.php?class=6',
-      follow: ".initiatives_block > .cat_title > p.cat_name > a",
+      selector: ".initiatives_block > .cat_title > p.cat_name > a@href",
       titleSelector: '.initiatives_header > p'
     })
   ).map(handle("news"));
@@ -139,13 +172,13 @@ var summariesStream = function() {
   return Rx.Observable.concat(
     articleStream({
       indexPage: 'http://www.emi-bg.com/index.php?class=4' ,
-      follow: '.item_block > .cat_title > p.cat_name > a',
+      selector: '.item_block > .cat_title > p.cat_name > a@href',
       titleSelector: '.blog_header > p'
     }),
     articleStream({
       indexPage: 'http://www.emi-bg.com/index.php?catid=12',
-      follow: ".item_block > .cat_title > p.cat_name > a",
-      titleSelector: '.analysis_header > p'
+      selector: ".item_block > .cat_title > p.cat_name > a@href",
+      titleSelector: '.analysis_header > a'
     })
   ).map(handle("summaries"));
 }
@@ -161,11 +194,19 @@ var insert = function(item) {
   });
 };
 
-emisStream().forEach(insert, function(err) {console.log("err:" + err);}, function() {
+Rx.Observable.concat(
+  summariesStream(), newsStream(), emisStream()
+).forEach(insert, function(err) {console.log("err:" + err);});
+
+/*articleStream({
+  indexPage: 'http://www.emi-bg.com/index.php?catid=13' ,
+  selector: '.item_block > .cat_title > p.cat_name > a@href',
+}).forEach(function(link) {console.log(link);})*/
+/*emisStream().forEach(insert, function(err) {console.log("err:" + err);}, function() {
   newsStream().forEach(insert, function(err) {console.log("err:" + err);}, function() {
     summariesStream().forEach(insert, function(err) {console.log("err:" + err);}, function() {
       console.log("ALL DONE");
     });
   });
-});
+});*/
 
