@@ -34,7 +34,7 @@ var images = [
 ];
 
 var itemStream = function(indexPage, setter, paginate) {
-  var stream = new Rx.Subject();
+  var stream = new Rx.ReplaySubject();
   var osm = osmosis.get(indexPage);
   if (paginate) {
     osm = osm.paginate('.cat_stranicirane > span:not(.tochki_div):first + a', '.cat_stranicirane > a:last');
@@ -64,7 +64,7 @@ var articleStream = function(args) {
     return 'http://www.emi-bg.com/index.php' + link.location;
   }, function(){})
   .flatMapObserver(function(url) {
-    var result = new Rx.Subject();
+    var result = new Rx.ReplaySubject();
     request(url, function(error, response, body) {
       if (error) result.onError(error);
       else if (response.statusCode == 200) {
@@ -185,28 +185,33 @@ var summariesStream = function() {
 
 var insert = function(item) {
   if (item.date > moment("10.03.2016", "DD.MM.YYYY").valueOf()) {
-    console.log("I am not going to insert that because its after 10.03.2016");
+    console.log("I am not going to insert that because its after 10.03.2016 item type:" + item.category);
     return;
   }
   db.collection('articles').insert(item, function(err, result) {
     if (err) console.log("ERROR: " + item.title.bg + JSON.stringify(err));
-    if (result) console.log('SUCCESS: ' + item.title.bg);
+    if (result) console.log('SUCCESS: ' + item.title.bg + " item type:" + item.category);
   });
 };
 
 Rx.Observable.concat(
   summariesStream(), newsStream(), emisStream()
-).forEach(insert, function(err) {console.log("err:" + err);});
+)
+.scan(function(prev, current, i) {
+  current.image.url = "https://drive.google.com/uc?export=view&id=" + images[i % images.length] + "&quot"
+  return current;
+})
+.forEach(insert, function(err) {console.log("err:" + err);}, function() {console.log("Completed");process.exit(0);});
 
 /*articleStream({
   indexPage: 'http://www.emi-bg.com/index.php?catid=13' ,
   selector: '.item_block > .cat_title > p.cat_name > a@href',
-}).forEach(function(link) {console.log(link);})*/
+}).forEach(function(link) {console.log(link);})
 emisStream().forEach(insert, function(err) {console.log("err:" + err);}, function() {
   newsStream().forEach(insert, function(err) {console.log("err:" + err);}, function() {
     summariesStream().forEach(insert, function(err) {console.log("err:" + err);}, function() {
       console.log("ALL DONE");
     });
   });
-});
+});*/
 
