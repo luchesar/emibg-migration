@@ -68,7 +68,7 @@ var articleStream = function(args) {
     request(url, function(error, response, body) {
       if (error) result.onError(error);
       else if (response.statusCode == 200) {
-        var $ = cheerio.load(body, {decodeEntities: true});
+        var $ = cheerio.load(body, {decodeEntities: false});
         var r = {
           "title": { "bg": $(args.titleSelector).text()},
           "details": $(".div_pod > .cat_autor").text(),
