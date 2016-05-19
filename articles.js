@@ -49,6 +49,30 @@ var itemStream = function(indexPage, setter, paginate) {
   return stream;
 };
 
+var fetchArticle = function(titleSelector) {
+  return function(url) {
+    var result = new Rx.ReplaySubject();
+    request(url, function(error, response, body) {
+      if (error) result.onError(error);
+      else if (response.statusCode == 200) {
+        var $ = cheerio.load(body, {decodeEntities: false});
+        var r = {
+          "title": { "bg": $(titleSelector).text()},
+          "details": $(".div_pod > .cat_autor").text(),
+          "html": {"bg": $(".div_pod + div").html()}
+        };
+        result.onNext(r);
+      } else {
+        result.onError("Fetching url:" + url + " rturned status:" + response.statusCode);
+      }
+      result.onCompleted();
+    });
+    return result;
+  }
+}
+
+var emptyObservable = function(err){return Rx.Observable.empty();}
+
 var articleStream = function(args) {
   var paginate = args.paginate === false ? false : true;
   return Rx.Observable.zip(
@@ -63,25 +87,7 @@ var articleStream = function(args) {
   .map(function(link) {
     return 'http://www.emi-bg.com/index.php' + link.location;
   }, function(){})
-  .flatMapObserver(function(url) {
-    var result = new Rx.ReplaySubject();
-    request(url, function(error, response, body) {
-      if (error) result.onError(error);
-      else if (response.statusCode == 200) {
-        var $ = cheerio.load(body, {decodeEntities: false});
-        var r = {
-          "title": { "bg": $(args.titleSelector).text()},
-          "details": $(".div_pod > .cat_autor").text(),
-          "html": {"bg": $(".div_pod + div").html()}
-        };
-        result.onNext(r);
-      } else {
-        result.onError("Fetching url:" + url + " rturned status:" + response.statusCode);
-      }
-      result.onCompleted();
-    });
-    return result;
-  }, function(err){return Rx.Observable.empty();}, function(){return Rx.Observable.empty();});
+  .flatMapObserver(fetchArticle(args.titleSelector), emptyObservable, emptyObservable);
 };
 
 var id = function(millis) {
@@ -194,14 +200,37 @@ var insert = function(item) {
   });
 };
 
-Rx.Observable.concat(
-  summariesStream(), newsStream(), emisStream()
-)
-.scan(function(prev, current, i) {
-  current.image.url = "https://drive.google.com/uc?export=view&id=" + images[i % images.length] + "&quot"
-  return current;
-})
-.forEach(insert, function(err) {console.log("err:" + err);}, function() {console.log("Completed");process.exit(0);});
+var migrateAllArticles = function() {
+  Rx.Observable.concat(
+    summariesStream(), newsStream(), emisStream()
+  )
+  .scan(function(prev, current, i) {
+    current.image.url = "https://drive.google.com/uc?export=view&id=" + images[i % images.length] + "&quot"
+    return current;
+  })
+  .forEach(insert, function(err) {console.log("err:" + err);}, function() {console.log("Completed");process.exit(0);});
+}
+
+var migrateSelectedArticles = function() {
+  Rx.Observable.fromArray([
+    "http://www.emi-bg.com/index.php?id=2379",
+    "http://www.emi-bg.com/index.php?id=2391",
+    "http://www.emi-bg.com/index.php?id=2392",
+    "http://www.emi-bg.com/index.php?id=2417",
+    "http://www.emi-bg.com/index.php?id=2421",
+    "http://www.emi-bg.com/index.php?id=2422",
+    "http://www.emi-bg.com/index.php?id=2426"
+  ])
+  .flatMapObserver(fetchArticle(".initiatives_header > p"), emptyObservable, emptyObservable)
+  .map(handle("news"))
+  .scan(function(prev, current, i) {
+    current.image.url = "https://drive.google.com/uc?export=view&id=" + images[i % images.length] + "&quot"
+    return current;
+  })
+  .forEach(insert, function(err) {console.log("err:" + err);}, function() {console.log("Completed");process.exit(0);});
+}
+
+migrateSelectedArticles();
 
 /*articleStream({
   indexPage: 'http://www.emi-bg.com/index.php?catid=13' ,
